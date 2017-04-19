@@ -1,2 +1,2 @@
 # RaftConsensus
-Tugas Besar Sistem Pararel dan Terdistribusi
+Tugas Besar Sistem Paralel dan Terdistribusi
