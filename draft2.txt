@@ -1,0 +1,33 @@
+load balancer
+	listen
+		recv param : send to least load
+		recv election : check, send vote
+		recv vote : if election add counter else 
+
+		recv array : store to file
+		recv + :
+		recv - :
+
+		recv load`: if master add to temp, else ignore
+	thread
+		master->heartbeat, move temp to history, broadcast last history
+		follower->timeout, send election
+
+daemon
+	thread
+		send load
+		
+server
+	listen
+		recv param : process, send answer
+	thread
+		each interval, send CPU Load
+	
+///////////////////////////////////////
+
+glossary
+	param : {daemon addr, param}
+	answer: {param, value}
+	election: {candidate addr, term, 
+	
+etc...
