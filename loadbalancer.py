@@ -1,4 +1,6 @@
 import sys, time
+from http.server import HTTPServer
+from http.server import BaseHTTPRequestHandler
 
 #const static
 IP = 0
@@ -8,12 +10,16 @@ OFF = 0
 SERVER_FILE = "ServerList.txt"
 NEW_LINE = '\n'
 STD_HEARTBEAT = None
+SUBMITTER_COUNTER = 0
 
 #const from file
 N_NODE = None
 N_WORKER = None
 DATA_FILE = None
 ID = None
+
+#temp data for workload
+TEMPWORKER_DICT = {}
 
 #dict
 WORKER_DICT = {}
@@ -108,3 +114,27 @@ else:
 	print (NODE_DICT)
 	print (WORKER_DICT)
 
+#class for http connection between node2node and node2worker
+class ListenerHandler(BaseHTTPRequestHandler):
+	def do_GET(self):
+		args = self.path.split('/')
+		# handle each request based on its type
+		if len(args) >= 6 and args[3] == 'cpuload':
+		# process the cpu load if the current node is a leader
+			if IS_LEADER:
+				# collect the data
+				fromHost = args[1]
+				fromPort = args[2]
+				cpuload = args[4]
+				workerid = args[5]
+
+				if workerid in WORKER_DICT:
+					print("worker with id %d is found" % (workerid))
+					print("from host : " + fromHost + ":" + fromPort + " with the cpu load = " + cpuload)
+					TEMPWORKER_DICT[workerid] = [fromHost, fromPort, cpuload, workerid]
+					if SUBMITTER_COUNTER >= N_WORKER :
+						SUBMITTER_COUNTER = 0
+						# copy data from temp dict into main dict
+
+				else:
+					print("Sorry the worker %d is not defined..." % (workerid))
