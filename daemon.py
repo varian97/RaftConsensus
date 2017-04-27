@@ -12,7 +12,7 @@ port = sys.argv[2]
 def init():
 	item = open("node.txt", "r")
 	for line in item:
-		listNode.append(line)
+		listNode.append(line.split('\n')[0])
 
 # testing get cpu load
 def getCPULoad():
@@ -21,8 +21,7 @@ def getCPULoad():
 # send cpu load to all node
 def sendCPULoad():
 	for item in listNode:
-		payload = {'load' : cpu_load}
-		r = requests.get(item, params=payload)
+		r = requests.get(item + '/cpuload=' + str(cpu_load))
 		print(r.url)
 
 init()
