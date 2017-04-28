@@ -1,4 +1,6 @@
 import sys, time
+from http.server import HTTPServer
+from http.server import BaseHTTPRequestHandler
 
 #const static
 IP = 0
@@ -8,6 +10,7 @@ OFF = 0
 SERVER_FILE = "ServerList.txt"
 NEW_LINE = '\n'
 STD_HEARTBEAT = None
+STD_DAEMON_TIMEOUT = None
 
 #const from file
 N_NODE = None
@@ -37,7 +40,45 @@ VOTE_TERM = 0
 #Leader variables
 TOP_DICT = {}
 COMMIT_DICT = {}
+DAEMON_TIMEOUT = {}
 HEARTBEAT = None
+
+
+class NodeHandler(BaseHTTPRequestHandler):
+
+    def do_GET(self):
+        try:
+            args = self.path.split('/')
+            if len(args) < 2:
+                raise Exception()
+            self.send_response(200)
+            self.end_headers()
+			if len(args) == 2:
+				n = int(args[1])
+				print("request to worker")
+			else:
+				n = int(args[3])
+				if n == "voteRequest":
+					print("send your vote here")
+				elif n == "upvote":
+					print("increment upvote")
+				elif n == "downvote":
+					print("increment downvote")
+				elif n == "data":
+					print("check local and reply")
+				elif n == "positive":
+					print("increment till majority")
+				elif n == "negative":
+					print("reply with prev data")
+				elif n == "load":
+					print("add to array")
+			
+            self.wfile.write(str(self.calc(n)).encode('utf-8'))
+        except Exception as ex:
+            self.send_response(500)
+            self.end_headers()
+            print(ex)
+
 
 def init() :
 	global N_NODE
@@ -56,12 +97,12 @@ def init() :
 			if line[0] == '#':
 				if context == None :
 					context = "Node"
-					N_NODE = int(line.split(':')[1].split(NEW_LINE)[0])
+					N_NODE = int(line.split('|')[1].split(NEW_LINE)[0])
 					count = 0
 				elif context == "Node":
 					context = "Worker"
 					count = 0
-					N_WORKER = int(line.split(':')[1].split(NEW_LINE)[0])
+					N_WORKER = int(line.split('|')[1].split(NEW_LINE)[0])
 			elif line[0] == '>':
 				address = line[1:]
 				args = address.split(':')
@@ -74,30 +115,39 @@ def init() :
 					STATUS_DICT[count] = OFF
 					count += 1
 
-def timer():
+def daemonTimer():
+	past = clock()
+	while IS_LEADER:
+		now = clock()
+		for i in range(N_WORKER)
+			DAEMON_TIMEOUT[i] -= now - past
+			if DAEMON_TIMEOUT[i] < 0:
+				STATUS_DICT[i] = OFF
+		past = now	
+		
+def nodeTimer():
 	while 1:
-		past = time()
+		past = clock()
+		#init random TIMEOUT
+		while not IS_LEADER and TIMEOUT > 0:
+			now = clock()
+			TIMEOUT -= now - past
+			past = now	
 		if not IS_LEADER:
-			#init TIMEOUT
-			while not IS_LEADER and TIMEOUT > 0:
-				now = time()
-				TIMEOUT -= now - past
-				past = now	
-			if not IS_LEADER:
-				TERM += 1
-				IS_ELECTION = True
-				UPVOTE = 1
-				DOWNVOTE = 0
-				#send vote request here
-		else:
-			HEARTBEAT = STD_HEARTBEAT
-			while IS_LEADER and HEARTBEAT > 0:
-				now = time()
-				HEARTBEAT -= now-past
-				past = now
-			if IS_LEADER:
-				print ("g")
-				#broadcast array to all
+			TERM += 1
+			IS_ELECTION = True
+			UPVOTE = 1
+			DOWNVOTE = 0
+			VOTE_TERM = TERM
+			for i in range (N_NODE):
+				if i != ID:
+					print ("send vote request to node " + str(i))
+		while IS_LEADER:
+			for i in range (N_NODE):
+						if i != ID:
+							print ("send data to node " + str(i))
+			time.sleep(STD_HEARTBEAT)
+				
 	
 
 if (len(sys.argv) != 2):
@@ -105,6 +155,6 @@ if (len(sys.argv) != 2):
 else:
 	ID = sys.argv[1]
 	init()
-	print (NODE_DICT)
-	print (WORKER_DICT)
+	#start timer here
+	#start server here
 

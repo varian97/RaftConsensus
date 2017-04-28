@@ -17,11 +17,9 @@ daemon
 	thread
 		send load
 		
-server
+worker
 	listen
 		recv param : process, send answer
-	thread
-		each interval, send CPU Load
 	
 ///////////////////////////////////////
 
