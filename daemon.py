@@ -27,14 +27,14 @@ def init():
 					context = "Worker"
 			elif line[0] == '>':
 				address = line[1:]
-				args = address.split(':')
+				args = address.split('|')
 				if context == "Node" :
 					listNode.append(address.split('\n')[0])
 				elif context == "Worker" :
 					countWorker = countWorker + 1
 					if countWorker == int(workerid) + 1:
-						host = args[0] + ':' + args[1]
-						port = args[2].split('\n')[0]
+						host = args[0]
+						port = args[1].split('\n')[0]
 
 # testing get cpu load
 def getCPULoad():
