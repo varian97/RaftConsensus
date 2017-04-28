@@ -10,7 +10,6 @@ OFF = 0
 SERVER_FILE = "ServerList.txt"
 NEW_LINE = '\n'
 STD_HEARTBEAT = None
-<<<<<<< HEAD
 STD_DAEMON_TIMEOUT = None
 SUBMITTER_COUNTER = 0
 
