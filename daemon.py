@@ -33,7 +33,7 @@ def init():
 				elif context == "Worker" :
 					countWorker = countWorker + 1
 					if countWorker == int(workerid) + 1:
-						host = args[0] + ':' + args[1]
+						host = args[0]+":"+args[1]
 						port = args[2].split('\n')[0]
 
 # testing get cpu load
