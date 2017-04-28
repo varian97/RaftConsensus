@@ -4,6 +4,7 @@ from http.server import BaseHTTPRequestHandler
 
 PORT = 13337
 
+
 class WorkerHandler(BaseHTTPRequestHandler):
     def prime(self, n):
         i = 2
@@ -34,6 +35,7 @@ class WorkerHandler(BaseHTTPRequestHandler):
             self.send_response(500)
             self.end_headers()
             print(ex)
+
 
 server = HTTPServer(("", PORT), WorkerHandler)
 server.serve_forever()

@@ -2,7 +2,7 @@ import sys, time, _thread, random, requests, math
 from http.server import HTTPServer
 from http.server import BaseHTTPRequestHandler
 
-#const static
+# const static
 IP = 0
 PORT = 1
 ON = 1
@@ -13,86 +13,89 @@ STD_HEARTBEAT = 2
 STD_DAEMON_TIMEOUT = None
 SUBMITTER_COUNTER = 0
 
-#const from file
-N_NODE = None
-N_WORKER = None
+# const from file
+N_NODE = 0
+N_WORKER = 0
 DATA_FILE = None
 ID = None
 
-#temp data for workload
-TEMPWORKER_DICT = {}
+# temp data for workload
+TEMP_WORKER_DICT = {}
 
-#address dict (ID->[IP,PORT])
+# address dict (ID->[IP,PORT])
 WORKER_DICT = {}
 NODE_DICT = {}
 
-#RAFT stored variables
+# RAFT stored variables
 LOAD_DICT = {}
-STATUS_DICT ={}
+STATUS_DICT = {}
 TERM = None
 
-#RAFT runtime variables
+# RAFT runtime variables
 IS_ELECTION = False
 IS_LEADER = False
 TIMEOUT = 0
 
-#Election variables
-UPVOTE = 0
-DOWNVOTE = 0
+# Election variables
+UP_VOTE = 0
+DOWN_VOTE = 0
 VOTE_TERM = 0
 
-#Leader variables
+# Leader variables
 TOP_DICT = {}
 COMMIT_DICT = {}
 DAEMON_TIMEOUT = {}
 HEARTBEAT = None
 
-def init() :
-	global N_NODE
-	global N_WORKER
-	global DATA_FILE
-	global WORKER_DICT
-	global NODE_DICT
-	global LOAD_DICT
-	global STATUS_DICT
-	
-	DATA_FILE = "Data_" + str(ID) + ".txt"
-	context = None
-	file = open(SERVER_FILE, "r")
-	for line in file:
-		if len(line) > 0:
-			if line[0] == '#':
-				if context == None :
-					context = "Node"
-					N_NODE = int(line.split(':')[1].split(NEW_LINE)[0])
-					count = 0
-				elif context == "Node":
-					context = "Worker"
-					count = 0
-					N_WORKER = int(line.split(':')[1].split(NEW_LINE)[0])
-			elif line[0] == '>':
-				address = line[1:]
-				args = address.split(':')
-				if context == "Node" and count < N_NODE:
-					NODE_DICT[count] = [args[0]+":"+args[1], args[2].split(NEW_LINE)[0]]
-					count += 1
-				elif context == "Worker" and count < N_WORKER:
-					WORKER_DICT[count] = [args[0]+":"+args[1], args[2].split(NEW_LINE)[0]]
-					LOAD_DICT[count] = 0
-					STATUS_DICT[count] = OFF
-					count += 1
-	
+
+def init():
+    global N_NODE
+    global N_WORKER
+    global DATA_FILE
+    global WORKER_DICT
+    global NODE_DICT
+    global LOAD_DICT
+    global STATUS_DICT
+
+    DATA_FILE = "Data_" + str(ID) + ".txt"
+    context = None
+    file = open(SERVER_FILE, "r")
+    count = 0
+    for line in file:
+        if len(line) > 0:
+            if line[0] == '#':
+                if context is None:
+                    context = "Node"
+                    N_NODE = int(line.split(':')[1].split(NEW_LINE)[0])
+                    count = 0
+                elif context == "Node":
+                    context = "Worker"
+                    count = 0
+                    N_WORKER = int(line.split(':')[1].split(NEW_LINE)[0])
+            elif line[0] == '>':
+                address = line[1:]
+                args = address.split(':')
+                if context == "Node" and count < N_NODE:
+                    NODE_DICT[count] = [args[0] + ":" + args[1], args[2].split(NEW_LINE)[0]]
+                    count += 1
+                elif context == "Worker" and count < N_WORKER:
+                    WORKER_DICT[count] = [args[0] + ":" + args[1], args[2].split(NEW_LINE)[0]]
+                    LOAD_DICT[count] = 0
+                    STATUS_DICT[count] = OFF
+                    count += 1
+
 
 def daemonTimer():
-	past = time.clock()
-	while IS_LEADER:
-		now = time.clock()
-		for i in range(N_WORKER):
-			DAEMON_TIMEOUT[i] -= now - past
-			if DAEMON_TIMEOUT[i] < 0:
-				STATUS_DICT[i] = OFF
-		past = now	
-		
+    past = time.clock()
+    while IS_LEADER:
+        now = time.clock()
+        for i in range(N_WORKER):
+            DAEMON_TIMEOUT[i] -= now - past
+            if DAEMON_TIMEOUT[i] < 0:
+                STATUS_DICT[i] = OFF
+        past = now
+
+
 def nodeTimer():
 	global TERM
 	global TIMEOUT
@@ -234,22 +237,29 @@ class ListenerHandler(BaseHTTPRequestHandler):
 			self.send_response(500)
 			self.end_headers()
 			print(ex)
-					
-					
-if (len(sys.argv) != 2):
-	print ("Please use ID (0 <= ID < number of node) as argv")
-else:
-	ID = int(sys.argv[1])
-	TERM = 0
-	COMMIT_DICT[ID] = 0
-	init()
-	
-	#start timer here
-	try:
-	   _thread.start_new_thread(nodeTimer, ())
-	except:
-	   print ("Error: unable to start thread")
-	
-	#start server here
-	server = HTTPServer(("", int(NODE_DICT[ID][PORT])), ListenerHandler)
-	server.serve_forever()
+
+def print_usage():
+    print('Usage : %s [node_id]' % sys.argv[0])
+    print('Please use ID (0 <= ID < number of node)')
+    sys.exit(-1)
+
+
+if __name__ == '__main__':
+    if len(sys.argv) != 2:
+        print_usage()
+    else:
+        # initialize ID, TERM, COMMIT_DICTIONARY
+        ID = int(sys.argv[1])
+        TERM = 0
+        COMMIT_DICT[ID] = 0
+        init()
+
+        # start timer here
+        try:
+            _thread.start_new_thread(nodeTimer, ())
+        except:
+            print("Error: unable to start thread")
+
+        # start server here
+        server = HTTPServer(("", int(NODE_DICT[ID][PORT])), ListenerHandler)
+        server.serve_forever()
