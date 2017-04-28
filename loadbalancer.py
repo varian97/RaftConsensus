@@ -1,4 +1,4 @@
-import sys, time
+import sys, time, _thread, random, requests
 from http.server import HTTPServer
 from http.server import BaseHTTPRequestHandler
 
@@ -22,7 +22,7 @@ ID = None
 #temp data for workload
 TEMPWORKER_DICT = {}
 
-#dict
+#address dict (ID->[IP,PORT])
 WORKER_DICT = {}
 NODE_DICT = {}
 
@@ -47,43 +47,6 @@ COMMIT_DICT = {}
 DAEMON_TIMEOUT = {}
 HEARTBEAT = None
 
-
-class NodeHandler(BaseHTTPRequestHandler):
-
-    def do_GET(self):
-        try:
-            args = self.path.split('/')
-            if len(args) < 2:
-                raise Exception()
-            self.send_response(200)
-            self.end_headers()
-			if len(args) == 2:
-				n = int(args[1])
-				print("request to worker")
-			else:
-				n = int(args[3])
-				if n == "voteRequest":
-					print("send your vote here")
-				elif n == "upvote":
-					print("increment upvote")
-				elif n == "downvote":
-					print("increment downvote")
-				elif n == "data":
-					print("check local and reply")
-				elif n == "positive":
-					print("increment till majority")
-				elif n == "negative":
-					print("reply with prev data")
-				elif n == "load":
-					print("add to array")
-			
-            self.wfile.write(str(self.calc(n)).encode('utf-8'))
-        except Exception as ex:
-            self.send_response(500)
-            self.end_headers()
-            print(ex)
-
-
 def init() :
 	global N_NODE
 	global N_WORKER
@@ -101,40 +64,47 @@ def init() :
 			if line[0] == '#':
 				if context == None :
 					context = "Node"
-					N_NODE = int(line.split('|')[1].split(NEW_LINE)[0])
+					N_NODE = int(line.split(':')[1].split(NEW_LINE)[0])
 					count = 0
 				elif context == "Node":
 					context = "Worker"
 					count = 0
-					N_WORKER = int(line.split('|')[1].split(NEW_LINE)[0])
+					N_WORKER = int(line.split(':')[1].split(NEW_LINE)[0])
 			elif line[0] == '>':
 				address = line[1:]
 				args = address.split(':')
 				if context == "Node" and count < N_NODE:
-					NODE_DICT[count] = [args[IP], args[PORT].split(NEW_LINE)[0]]
+					NODE_DICT[count] = [args[0]+":"+args[1], args[2].split(NEW_LINE)[0]]
 					count += 1
 				elif context == "Worker" and count < N_WORKER:
-					WORKER_DICT[count] = [args[IP], args[PORT].split(NEW_LINE)[0]]
+					WORKER_DICT[count] = [args[0]+":"+args[1], args[2].split(NEW_LINE)[0]]
 					LOAD_DICT[count] = 0
 					STATUS_DICT[count] = OFF
 					count += 1
+	
 
 def daemonTimer():
-	past = clock()
+	past = time.clock()
 	while IS_LEADER:
-		now = clock()
-		for i in range(N_WORKER)
+		now = time.clock()
+		for i in range(N_WORKER):
 			DAEMON_TIMEOUT[i] -= now - past
 			if DAEMON_TIMEOUT[i] < 0:
 				STATUS_DICT[i] = OFF
 		past = now	
 		
 def nodeTimer():
+	global TERM
+	global TIMEOUT
+	global IS_ELECTION
+	global UPVOTE
+	global DOWNVOTE
+	global VOTE_TERM
 	while 1:
-		past = clock()
-		#init random TIMEOUT
+		past = time.clock()
+		TIMEOUT = random.uniform(2.0, 4.0)
 		while not IS_LEADER and TIMEOUT > 0:
-			now = clock()
+			now = time.clock()
 			TIMEOUT -= now - past
 			past = now	
 		if not IS_LEADER:
@@ -145,7 +115,13 @@ def nodeTimer():
 			VOTE_TERM = TERM
 			for i in range (N_NODE):
 				if i != ID:
-					print ("send vote request to node " + str(i))
+					print ("send vote request to node " + str(i) + " for term " + str(TERM))
+					print(NODE_DICT[i][IP] + ":" + NODE_DICT[i][PORT]+"/voteRequest/"+str(ID)+"/"+str(TERM)+"/"+str(COMMIT_DICT[ID]))
+					try:
+						r = requests.get(NODE_DICT[i][IP] + ":" + NODE_DICT[i][PORT]+"/voteRequest/"+str(ID)+"/"+str(TERM)+"/"+str(COMMIT_DICT[ID]))
+					except:
+						print("request fail for node "+str(i))
+					
 		while IS_LEADER:
 			for i in range (N_NODE):
 						if i != ID:
@@ -153,36 +129,81 @@ def nodeTimer():
 			time.sleep(STD_HEARTBEAT)
 
 #class for http connection between node2node and node2worker
-class ListenerHandler(BaseHTTPRequestHandler):
+class ListenerHandler(BaseHTTPRequestHandler):			
+	
 	def do_GET(self):
-		args = self.path.split('/')
-		# handle each request based on its type
-		if len(args) >= 6 and args[3] == 'cpuload':
-		# process the cpu load if the current node is a leader
-			if IS_LEADER:
-				# collect the data
-				fromHost = args[1]
-				fromPort = args[2]
-				cpuload = args[4]
-				workerid = args[5]
+		try:
+			args = self.path.split('/')
+			if len(args) < 2:
+				raise Exception()
+			self.send_response(200)
+			self.end_headers()
+			# handle each request based on its type
+			if len(args) == 2:
+				n = int(args[1])
+				print("request to worker")
+			else:
+				n = int(args[3])
+				if n == "voteRequest":
+					print("send your vote here")
+					if (TERM < args[5] and COMMIT_DICT[ID] <= args[6]):
+						r = requests.get(NODE_DICT[int(args[4])][IP] + ":" + NODE_DICT[int(args[4])][PORT]+"/upvote/"+str(ID)+"/"+str(TERM))
+						TERM = args[5]
+						IS_LEADER = False
+						IS_ELECTION = False
+						VOTE_TERM = TERM
+					else:
+						r = requests.get(NODE_DICT[int(args[4])][IP] + ":" + NODE_DICT[int(args[4])][PORT]+"/downvote/"+str(ID)+"/"+str(TERM))
+				elif n == "upvote":
+					print("increment upvote")
+				elif n == "downvote":
+					print("increment downvote")
+				elif n == "data":
+					print("check local and reply")
+				elif n == "positive":
+					print("increment till majority")
+				elif n == "negative":
+					print("reply with prev data")
+				elif n == "cpuload":
+					# process the cpu load if the current node is a leader
+					if IS_LEADER:
+						# collect the data
+						fromHost = args[1]
+						fromPort = args[2]
+						cpuload = args[4]
+						workerid = args[5]
 
-				if workerid in WORKER_DICT:
-					print("worker with id %d is found" % (workerid))
-					print("from host : " + fromHost + ":" + fromPort + " with the cpu load = " + cpuload)
-					TEMPWORKER_DICT[workerid] = [fromHost, fromPort, cpuload, workerid]
-					if SUBMITTER_COUNTER >= N_WORKER :
-						SUBMITTER_COUNTER = 0
-						# copy data from temp dict into main dict
+						if workerid in WORKER_DICT:
+							print("worker with id %d is found" % (workerid))
+							print("from host : " + fromHost + ":" + fromPort + " with the cpu load = " + cpuload)
+							TEMPWORKER_DICT[workerid] = [fromHost, fromPort, cpuload, workerid]
+							if SUBMITTER_COUNTER >= N_WORKER :
+								SUBMITTER_COUNTER = 0
+								# copy data from temp dict into main dict
 
-				else:
-					print("Sorry the worker %d is not defined..." % (workerid))
-
+						else:
+							print("Sorry the worker %d is not defined..." % (workerid))
+			
+		except Exception as ex:
+			self.send_response(500)
+			self.end_headers()
+			print(ex)
 					
 					
 if (len(sys.argv) != 2):
 	print ("Please use ID (0 <= ID < number of node) as argv")
 else:
-	ID = sys.argv[1]
+	ID = int(sys.argv[1])
+	TERM = 0
+	COMMIT_DICT[ID] = 0
 	init()
+	
 	#start timer here
+	try:
+	   _thread.start_new_thread(nodeTimer, ())
+	except:
+	   print ("Error: unable to start thread")
+	
 	#start server here
+	server = HTTPServer(("", int(NODE_DICT[ID][PORT])), ListenerHandler)
+	server.serve_forever()
