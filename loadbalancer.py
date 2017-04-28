@@ -12,9 +12,7 @@ NEW_LINE = '\n'
 STD_HEARTBEAT = None
 <<<<<<< HEAD
 STD_DAEMON_TIMEOUT = None
-=======
 SUBMITTER_COUNTER = 0
->>>>>>> b2a24ecfdd572a7bea8d8f60ec05fe946786fcee
 
 #const from file
 N_NODE = None
@@ -154,16 +152,6 @@ def nodeTimer():
 						if i != ID:
 							print ("send data to node " + str(i))
 			time.sleep(STD_HEARTBEAT)
-				
-	
-
-if (len(sys.argv) != 2):
-	print ("Please use ID (0 <= ID < number of node) as argv")
-else:
-	ID = sys.argv[1]
-	init()
-	#start timer here
-	#start server here
 
 #class for http connection between node2node and node2worker
 class ListenerHandler(BaseHTTPRequestHandler):
@@ -189,3 +177,13 @@ class ListenerHandler(BaseHTTPRequestHandler):
 
 				else:
 					print("Sorry the worker %d is not defined..." % (workerid))
+
+					
+					
+if (len(sys.argv) != 2):
+	print ("Please use ID (0 <= ID < number of node) as argv")
+else:
+	ID = sys.argv[1]
+	init()
+	#start timer here
+	#start server here
