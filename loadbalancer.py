@@ -1,4 +1,5 @@
 import sys, time, _thread, random, requests
+import json
 from http.server import HTTPServer
 from http.server import BaseHTTPRequestHandler
 
@@ -11,16 +12,12 @@ SERVER_FILE = "ServerList.txt"
 NEW_LINE = '\n'
 STD_HEARTBEAT = None
 STD_DAEMON_TIMEOUT = None
-SUBMITTER_COUNTER = 0
 
 #const from file
 N_NODE = None
 N_WORKER = None
 DATA_FILE = None
 ID = None
-
-#temp data for workload
-TEMPWORKER_DICT = {}
 
 #address dict (ID->[IP,PORT])
 WORKER_DICT = {}
@@ -124,8 +121,8 @@ def nodeTimer():
 					
 		while IS_LEADER:
 			for i in range (N_NODE):
-						if i != ID:
-							print ("send data to node " + str(i))
+				if i != ID:
+					print ("send data to node " + str(i))
 			time.sleep(STD_HEARTBEAT)
 
 #class for http connection between node2node and node2worker
@@ -160,6 +157,40 @@ class ListenerHandler(BaseHTTPRequestHandler):
 					print("increment downvote")
 				elif n == "data":
 					print("check local and reply")
+					if not IS_LEADER:
+						# check if commit equals or not
+						countCommit = 0
+						leaderCommit = args[4]
+						f = open(DATA_FILE, 'r')
+						for line in f:
+							countCommit = countCommit + 1
+
+						if countCommit == leaderCommit - 1:
+							# parsing the data from url into local load dict
+							LOAD_DICT = json.loads(args[5])
+							for key in LOAD_DICT:
+								STATUS_DICT[key] = ON
+
+							# copy data from temp dict into storage
+							commit_data = open(DATA_FILE, 'w')
+							for key, value in LOAD_DICT.items():
+								#format file commit : worker_id | cpuload | status
+								commit_data.write(key + '|' + value + '|' + STATUS_DICT[key] + NEW_LINE)
+
+							# send commit to leader
+							try:
+								id_leader = args[2]
+								r = requests.get(NODE_DICT[id_leader][IP] + ":" + NODE_DICT[id_leader][PORT] + "/positive")
+							except:
+								print("Send positive response failed for node "+str(ID))
+						elif countCommit < leaderCommit - 1:
+							# send negative
+							id_leader = args[2]
+							try :
+								r = requests.get(NODE_DICT[id_leader][IP] + ":" + NODE_DICT[id_leader][PORT] + "/negative/" + countCommit + "/" + str(ID))
+							except :
+								print("Send negative response failed for node "+str(ID))
+
 				elif n == "positive":
 					print("increment till majority")
 				elif n == "negative":
@@ -176,10 +207,18 @@ class ListenerHandler(BaseHTTPRequestHandler):
 						if workerid in WORKER_DICT:
 							print("worker with id %d is found" % (workerid))
 							print("from host : " + fromHost + ":" + fromPort + " with the cpu load = " + cpuload)
-							TEMPWORKER_DICT[workerid] = [fromHost, fromPort, cpuload, workerid]
-							if SUBMITTER_COUNTER >= N_WORKER :
-								SUBMITTER_COUNTER = 0
-								# copy data from temp dict into main dict
+							LOAD_DICT[workerid] = [cpuload]
+							STATUS_DICT[workerid] = ON
+
+							#REPLICATES DATA TO OTHER NODE
+							for i in range(N_NODE):
+								if i != ID:
+									try:
+										cpuloadJSON = json.dumps(LOAD_DICT)
+										r = requests.get(NODE_DICT[i][IP] + ":" + NODE_DICT[i][PORT]+"/data/"+str(ID)+"/"+str(TERM)+"/"+str(sorted(COMMIT_DICT.keys())[-1] + 1) + "/", params=cpuloadJSON)
+										print(r.url)
+									except:
+										print("replication fail for node "+str(i))
 
 						else:
 							print("Sorry the worker %d is not defined..." % (workerid))
