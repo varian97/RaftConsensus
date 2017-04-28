@@ -1,4 +1,5 @@
-import sys, time, _thread, random, requests, math
+import sys, time, _thread, random, requests, math, json
+import urllib.parse as urlparse
 from http.server import HTTPServer
 from http.server import BaseHTTPRequestHandler
 
@@ -52,10 +53,14 @@ def init():
     global NODE_DICT
     global LOAD_DICT
     global STATUS_DICT
+    global COMMIT_DICT
+    global ID
+    global TERM
 
     DATA_FILE = "Data_" + str(ID) + ".txt"
     context = None
     file = open(SERVER_FILE, "r")
+    datafile = open(DATA_FILE, "a+")
     count = 0
     for line in file:
         if len(line) > 0:
@@ -154,8 +159,16 @@ class ListenerHandler(BaseHTTPRequestHandler):
 				raise Exception()
 			# handle each request based on its type
 			if len(args) == 2:
+				# send request from client to worker
 				n = int(args[1])
-				#print("request to worker")
+				minLoad = 0
+				for i in range(N_WORKER):
+					if LOAD_DICT[i] < LOAD_DICT[minLoad]:
+						minLoad = i
+				r = requests.get(WORKER_DICT[minLoad][IP] + ":" + str(WORKER_DICT[minLoad][PORT])+"/"+args[2], timeout = 0.01)
+
+				#print the result
+				self.wfile.write(str(int(r.text)).encode('utf-8'))
 			else:
 				n = args[1]
 				if n == "voteRequest":
@@ -223,14 +236,18 @@ class ListenerHandler(BaseHTTPRequestHandler):
 					if not IS_LEADER:
 						# check if commit equals or not
 						countCommit = 0
-						leaderCommit = args[4]
+						leaderCommit = int(args[4].split('?')[0])
 						f = open(DATA_FILE, 'r')
 						for line in f:
 							countCommit = countCommit + 1
 
 						if countCommit == leaderCommit - 1:
 							# parsing the data from url into local load dict
-							LOAD_DICT = json.loads(args[5])
+							parsed = urlparse.urlparse(self.path)
+							for i in range(N_WORKER):
+								LOAD_DICT[i] = urlparse.parse_qs(parsed.query)[str(i)]
+
+							#LOAD_DICT = json.loads(args[5].decode("utf-8"))
 							for key in LOAD_DICT:
 								STATUS_DICT[key] = ON
 
@@ -238,26 +255,43 @@ class ListenerHandler(BaseHTTPRequestHandler):
 							commit_data = open(DATA_FILE, 'w')
 							for key, value in LOAD_DICT.items():
 								#format file commit : worker_id | cpuload | status
-								commit_data.write(key + '|' + value + '|' + STATUS_DICT[key] + NEW_LINE)
+								commit_data.write(str(key) + '|' + str(value) + '|' + str(STATUS_DICT[key]) + NEW_LINE)
 
 							# send commit to leader
 							try:
-								id_leader = args[2]
-								r = requests.get(NODE_DICT[id_leader][IP] + ":" + str(NODE_DICT[id_leader][PORT]) + "/positive", timeout=0.01)
-							except:
-								print("Send positive response failed for node "+str(ID))
+								id_leader = int(args[2])
+								r = requests.get(NODE_DICT[id_leader][IP] + ":" + str(NODE_DICT[id_leader][PORT]) + "/positive/" + countCommit + "/" + str(ID), timeout=0.01)
+								print("send positive succeed")
+							except TypeError as e:
+								#print("Send positive response failed for node "+str(ID))
+								#print ("Unexpected error:", sys.exc_info()[0])
+								print(e)
 						elif countCommit < leaderCommit - 1:
 							# send negative
-							id_leader = args[2]
+							id_leader = int(args[2])
 							try :
 								r = requests.get(NODE_DICT[id_leader][IP] + ":" + str(NODE_DICT[id_leader][PORT]) + "/negative/" + countCommit + "/" + str(ID), timeout=0.01)
-							except :
-								print("Send negative response failed for node "+str(ID))
-
+							except TypeError as e:
+								#print("Send negative response failed for node "+str(ID))
+								#print ("Unexpected error:", sys.exc_info()[0])
+								print(e)
 				elif n == "positive":
-					print("increment till majority")
+					if IS_LEADER:
+						commit = args[2]
+						TOP_DICT[int(args[3])] = int(commit) + 1
+						COMMIT_DICT[int(args[3])] = int(commit)
 				elif n == "negative":
-					print("reply with prev data")
+					if IS_LEADER:
+						commit = args[2]
+						TOP_DICT[int(args[3])] = int(commit)
+						file = open(DATA_FILE, 'r')
+						temp = 0
+						temp_data = None
+						for line in file:
+							temp += 1
+							if temp == int(commit) - 1:
+								temp_data = line
+						r = requests.get(NODE_DICT[i][IP] + ":" + str(NODE_DICT[i][PORT]) +"/data/"+str(ID)+"/"+str(TERM) + "/" + str(int(commit)-1), params=temp_data, timeout=0.01)
 				elif n == "cpuload":
 					# process the cpu load if the current node is a leader
 					if IS_LEADER:
@@ -276,11 +310,12 @@ class ListenerHandler(BaseHTTPRequestHandler):
 								if i != ID:
 									try:
 										cpuloadJSON = json.dumps(LOAD_DICT)
-										r = requests.get(NODE_DICT[i][IP] + ":" + str(NODE_DICT[i][PORT]) +"/data/"+str(ID)+"/"+str(TERM) + "/" + str(sorted(COMMIT_DICT.keys())[-1] + 1) + "/", params=cpuloadJSON, timeout=0.01)
+										r = requests.get(NODE_DICT[i][IP] + ":" + str(NODE_DICT[i][PORT]) +"/data/"+str(ID)+"/"+str(TERM) + "/" + str(COMMIT_DICT[ID] + 1), params=LOAD_DICT, timeout=0.01)
 										print("==== cpu load has been sent to another node %s ====" % str(i))
-									except:
-										print("replication fail for node "+str(i))
-
+									except NameError as e:
+										#print("replication fail for node "+str(i))
+										#print ("Unexpected error:", sys.exc_info()[0])
+										print(e)
 						else:
 							print("Sorry the worker %s is not defined..." % (workerid))
 			
