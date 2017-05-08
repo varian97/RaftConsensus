@@ -45,10 +45,13 @@ def getCPULoad():
 
 # send cpu load to all node
 def sendCPULoad():
-    cpu_load = getCPULoad()
-    for item in listNode:
-        r = requests.get(item + '/' + host + '/' + port + '/cpuload/' + str(cpu_load) + '/' + worker_id)
-        print(r.url)
+	cpu_load = getCPULoad()
+	for item in listNode:
+		try:
+			r = requests.get(item + '/cpuload/' + str(cpu_load) + '/' + worker_id)
+			print(r.url)
+		except:
+			pass
 
 
 if len(sys.argv) != 2:
@@ -57,4 +60,4 @@ else:
     init()
     while 1:
         sendCPULoad()
-        time.sleep(2)  # wait 2 seconds before sending again
+        time.sleep(1)  # wait 2 seconds before sending again
