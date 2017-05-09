@@ -12,6 +12,7 @@ SERVER_FILE = "ServerList.txt"
 NEW_LINE = '\n'
 STD_HEARTBEAT = 2
 STD_DAEMON_TIMEOUT = None
+TIMEOUT_RANGE = 2
 
 # const from file
 N_NODE = 0
@@ -43,7 +44,7 @@ TOP_DICT = {}
 COMMIT_DICT = {}
 DAEMON_TIMEOUT = {}
 HEARTBEAT = None
-
+COMMIT_COUNTER = {}
 
 def init():
     global N_NODE
@@ -84,6 +85,9 @@ def init():
                     LOAD_DICT[count] = 0
                     STATUS_DICT[count] = OFF
                     count += 1
+    
+    #Mungkin dipindah ke listener url
+
 
 
 def daemonTimer():
@@ -98,7 +102,6 @@ def daemonTimer():
 
 
 def nodeTimer():
-<<<<<<< HEAD
 	global TERM
 	global TIMEOUT
 	global IS_ELECTION
@@ -107,9 +110,14 @@ def nodeTimer():
 	global VOTE_TERM
 	global HEARTBEAT
 	global IS_LEADER
+	global TOP_DICT
+
+	#if ID == 0:
+	#		IS_LEADER = True
+
 	while 1:
-		"""past = time.clock()
-		TIMEOUT = random.uniform(10.0, 20.0)
+		past = time.clock()
+		TIMEOUT = random.uniform(TIMEOUT_RANGE, 2*TIMEOUT_RANGE)
 		while not IS_LEADER and TIMEOUT > 0:
 			now = time.clock()
 			TIMEOUT -= now - past
@@ -128,17 +136,25 @@ def nodeTimer():
 					except:
 						pass
 		while IS_LEADER:
+			print ("LEADER")
 			for i in range (N_NODE):		
 				if i != ID:
-					pass#print ("send data to node " + str(i))
+					sendCommit(NODE_DICT[i][IP], NODE_DICT[i][PORT], TOP_DICT[i]-1)
+					print ("send commit to node " + str(i))
 			HEARTBEAT = STD_HEARTBEAT
 			past = time.clock()
 			while IS_LEADER  and HEARTBEAT > 0:
 				now = time.clock()
 				HEARTBEAT -= now - past
-				past = now"""
-		if ID == 0:
-			IS_LEADER = True
+				past = now
+		
+
+def replace_line(file_name, line_num, text):
+    lines = open(file_name, 'r').readlines()
+    lines[line_num] = text
+    out = open(file_name, 'w')
+    out.writelines(lines)
+    out.close()
 
 #class for http connection between node2node and node2worker
 class ListenerHandler(BaseHTTPRequestHandler):			
@@ -176,7 +192,7 @@ class ListenerHandler(BaseHTTPRequestHandler):
 			else:
 				n = args[1]
 				if n == "voteRequest":
-					TIMEOUT = random.uniform(2.0, 4.0)
+					TIMEOUT = random.uniform(TIMEOUT_RANGE, 2*TIMEOUT_RANGE)
 					if (TERM < int(args[3]) and COMMIT_DICT[ID] <= int(args[4]) and VOTE_TERM < int(args[3])):
 						try:
 							#print("send upvote to node" +args[2]+" for term "+args[3])
@@ -197,37 +213,57 @@ class ListenerHandler(BaseHTTPRequestHandler):
 							pass
 						
 				elif n == "upvote":
-					TIMEOUT = random.uniform(2.0, 4.0)
+					TIMEOUT = random.uniform(TIMEOUT_RANGE, 2*TIMEOUT_RANGE)
 					if int(args[3]) == TERM and IS_ELECTION:
 						UPVOTE+=1
 						#print ("Receive upvote from "+args[2]+" for term "+args[3])
 						if UPVOTE > math.floor(N_NODE/2): #harusnya ad validasi siapa yg udah vote, tp aku males, ntar aj
 							print ("Node "+str(ID)+" menjadi leader")
-							IS_LEADER = True
+							
 							IS_ELECTION = False
 							TERM = int (args[3])
 							VOTE_TERM = TERM
 							#set semua top jadi sama dengan master
 							#set semua commit jadi 0
+
+
+							#isi temporary status dengan last commit
+							lastcommit = ""
 							count = 0
 							f = open(DATA_FILE, "r")
 							for line in f:
-								count += 1
+								if (line[0] != '#') and len(line) > 0:
+									lastcommit = line
+									count += 1
 
 							for i in range(N_NODE):
 								if i != ID:
-									COMMIT_DICT[i] = 0
+									COMMIT_DICT[i] = 0								
 								else:
 									COMMIT_DICT[i] = count
-							#isi temporary data dengan last commit
-							#isi temporary status dengan last commit
+								TOP_DICT[i] = count+1
+
+							if len(lastcommit) > 0:
+								arr0 = lastcommit.split('*')
+								TERM = int(arr0[0])
+								arr1 = arr0[1].split('&')
+
+								for item in arr1:
+									arr2 = item.split('|')
+									LOAD_DICT[int(arr2[0])] = float(arr2[1])
+									STATUS_DICT[int(arr2[0])] = int(arr2[2])
+							else:
+								for i in range(N_NODE):
+									LOAD_DICT[i] = 0
+									STATUS_DICT[i] = OFF
+							IS_LEADER = True
 							#set semua daemon_timer ke std_daemon_timeout
 							#jalankan timer
 							
 							
 							
 				elif n == "downvote":
-					TIMEOUT = random.uniform(2.0, 4.0)
+					TIMEOUT = random.uniform(TIMEOUT_RANGE, 2*TIMEOUT_RANGE)
 					if int(args[3]) == TERM and IS_ELECTION:
 						DOWNVOTE+=1
 						#print ("Receive downvote from "+args[2]+" for term "+args[3])
@@ -235,72 +271,155 @@ class ListenerHandler(BaseHTTPRequestHandler):
 							print ("Node "+str(ID)+" gagal menjadi leader")
 							IS_LEADER = False
 							IS_ELECTION = False
+
 				elif n == "data":
+					TIMEOUT = random.uniform(TIMEOUT_RANGE, 2*TIMEOUT_RANGE)
 					print("===================check local and reply=============================")
 					if not IS_LEADER:
 						# check if commit equals or not
+						totalLine = 0
 						countCommit = 0
 						leaderCommit = int(args[4].split('?')[0])
 						f = open(DATA_FILE, 'r')
 						for line in f:
-							countCommit = countCommit + 1
+							if (line[0] != '#') and len(line) > 0:
+								countCommit = countCommit + 1
+							totalLine = totalLine + 1
+
+						#leaderCommit = countCommit + 1
+
+						print("count commit = %s, leader commit = %s" % (str(countCommit), str(leaderCommit)))
+
+						while countCommit > leaderCommit-1:
+							i = 0
+							payload = ""
+							for line in f:
+								if i != countCommit-1:
+									i+=1
+								else:
+									payload = line
+							replace_line(DATA_FILE, countCommit-1, '#'+ payload)
+							countCommit-=1
 
 						if countCommit == leaderCommit - 1:
-							print("NODE FOLLOWER : MASUKIN KE COMMIT LOG")
 							# parsing the data from url into local load dict
 							parsed = urlparse.urlparse(self.path)
+							#print(int(urlparse.parse_qs(parsed.query)['1'][0]))
 							for i in range(N_WORKER):
-								LOAD_DICT[i] = urlparse.parse_qs(parsed.query)[str(i)]
+								LOAD_DICT[i] = float(urlparse.parse_qs(parsed.query)[str(i)][0])
+								STATUS_DICT[i] = int(urlparse.parse_qs(parsed.query)[str(i)][1])
+								pass
 
-							#LOAD_DICT = json.loads(args[5].decode("utf-8"))
-							for key in LOAD_DICT:
-								STATUS_DICT[key] = ON
 
-							for key, value in LOAD_DICT :
-								print(key, value)
 
 							# copy data from temp dict into storage
-							commit_data = open(DATA_FILE, 'w')
+							payload = "#" + str(TERM) + '*'
+
 							for key, value in LOAD_DICT.items():
 								#format file commit : worker_id | cpuload | status
-								commit_data.write(str(key) + '|' + str(value) + '|' + str(STATUS_DICT[key]) + NEW_LINE)
+								if key != 0:
+									payload += '&'
+								payload += '{}|{}|{}'.format(str(key), str(value), str(STATUS_DICT[key]))
+
+							payload += '\n'
+
+							if(leaderCommit-1 < totalLine):
+								replace_line(DATA_FILE, leaderCommit-1, payload)
+							else:
+								commit_data = open(DATA_FILE, 'w')
+								commit_data.write(payload)
+								commit_data.close()
 
 							# send commit to leader
 							try:
 								id_leader = int(args[2])
 								print("NODE FOLLOWER : SENDING POSITIVE BACK TO THE LEADER")
-								r = requests.get(NODE_DICT[id_leader][IP] + ":" + str(NODE_DICT[id_leader][PORT]) + "/positive/" + countCommit + "/" + str(ID), timeout=0.01)
-							except TypeError as e:
-								#print("Send positive response failed for node "+str(ID))
-								#print ("Unexpected error:", sys.exc_info()[0])
-								print(e)
+								r = requests.get("{}:{}/positive/{}/{}".format(NODE_DICT[id_leader][IP], str(NODE_DICT[id_leader][PORT]), countCommit+1 , str(ID), timeout=0.01))
+							except :
+								pass
+								#print(e)
+
 						elif countCommit < leaderCommit - 1:
 							print("NODE FOLLOWER : SENDING NEGATIVE BACK TO THE LEADER")
 							# send negative
 							id_leader = int(args[2])
 							try :
-								r = requests.get(NODE_DICT[id_leader][IP] + ":" + str(NODE_DICT[id_leader][PORT]) + "/negative/" + countCommit + "/" + str(ID), timeout=0.01)
-							except TypeError as e:
-								#print("Send negative response failed for node "+str(ID))
-								#print ("Unexpected error:", sys.exc_info()[0])
-								print(e)
+								r = requests.get(NODE_DICT[id_leader][IP] + ":" + str(NODE_DICT[id_leader][PORT]) + "/negative/" + str(countCommit+1) + "/" + str(ID), timeout=0.01)
+							except :
+								pass
+								#print(e)
+
 				elif n == "positive":
 					if IS_LEADER:
-						commit = args[2]
-						TOP_DICT[int(args[3])] = int(commit) + 1
-						COMMIT_DICT[int(args[3])] = int(commit)
+						print("GET POSITIVE")
+						COMMIT_COUNTER[int(args[2])] += 1
+						COMMIT_DICT[int(args[3])] = int(args[2])
+						TOP_DICT[int(args[3])] = int(args[2]) + 1
+						if(COMMIT_COUNTER[int(args[2])] > (N_NODE / 2)):
+							f = open(DATA_FILE, 'r')
+							i = 0
+							payload = ""
+							for line in f:
+								if i != int(args[3]):
+									i+=1
+								else:
+									payload = line
+							if payload[0] == '#':
+								replace_line(DATA_FILE, int(args[3]), payload.split('#')[1])
+
+							COMMIT_DICT[ID] = int(args[2])
+							TOP_DICT[ID] = int(args[2]) + 1
+
 				elif n == "negative":
 					if IS_LEADER:
-						commit = args[2]
-						TOP_DICT[int(args[3])] = int(commit)
-						file = open(DATA_FILE, 'r')
-						temp = 0
-						temp_data = None
-						for line in file:
-							temp += 1
-							if temp == int(commit) - 1:
-								temp_data = line
-						r = requests.get(NODE_DICT[i][IP] + ":" + str(NODE_DICT[i][PORT]) +"/data/"+str(ID)+"/"+str(TERM) + "/" + str(int(commit)-1), params=temp_data, timeout=0.01)
+						print("GET NEGATIVE")
+						TOP_DICT[int(args[3])] -= 1
+
+				elif n == "commit":
+					print("COMMIT")
+					TIMEOUT = random.uniform(TIMEOUT_RANGE, 2*TIMEOUT_RANGE)
+					countCommit = 0
+					f = open(DATA_FILE, "r")
+					for line in f:
+						if (line[0] != '#') and len(line) > 0:
+							countCommit = countCommit + 1
+					commitLine = int(args[3])
+					print(str(countCommit)+ "========="+ str(commitLine-1))
+					if countCommit == commitLine - 1:
+						i = 0
+						payload = ""
+						for line in f:
+							if i != countCommit:
+								i+=1
+							else:
+								payload = line
+						if len(payload) == 0:
+							replace_line(DATA_FILE, countCommit, args[2].replace('%27', '|') + '\n')
+						elif payload[0] == '#':
+							replace_line(DATA_FILE, countCommit, payload.split('#')[1])
+						print("POSITIVE COMMIT")
+						r = requests.get(NODE_DICT[id_leader][IP] + ":" + str(NODE_DICT[id_leader][PORT]) + "/positivecommit/" + args[3] + "/" + str(ID), timeout=0.01)
+
+					elif countCommit < commitLine - 1:
+						id_leader = int(args[4])
+						try :
+							r = requests.get(NODE_DICT[id_leader][IP] + ":" + str(NODE_DICT[id_leader][PORT]) + "/negativecommit/" + args[3] + "/" + str(ID), timeout=0.01)
+						except TypeError as e:
+							print(e)
+
+				elif n == "positivecommit":
+					print ("Leader get positive commit")
+					if COMMIT_DICT[int(args[3])] == int(args[2]) - 1:
+						COMMIT_DICT[int(args[3])] = int(args[2])
+						TOP_DICT[int(args[3])] = int(args[2]) + 1
+						COMMIT_COUNTER[int(args[3])] += 1
+						if COMMIT_COUNTER[int(args[3])] > N_NODE/2 and COMMIT_DICT[ID] == int(args[2] - 1):
+							COMMIT_DICT[ID] += 1
+
+				elif n == "negativecommit":
+					print ("Leader get negative commit")
+					TOP_DICT[int(args[3])] = int(args[2])					
+
 				elif n == "cpuload":
 					print(IS_LEADER)
 					# process the cpu load if the current node is a leader
@@ -312,10 +431,22 @@ class ListenerHandler(BaseHTTPRequestHandler):
 						print("NODE LEADER : DAPET DARI DAEMON ID KE %s" % workerid)
 
 						if int(workerid) in WORKER_DICT:
-							print("worker with id %d is found" % (int(workerid)))
+							#print("worker with id %d is found" % (int(workerid)))
 							#print("from host : " + fromHost + ":" + fromPort + " with the cpu load = " + cpuload)
-							LOAD_DICT[workerid] = cpuload
-							STATUS_DICT[workerid] = ON
+							LOAD_DICT[int(workerid)] = cpuload
+							STATUS_DICT[int(workerid)] = ON
+
+							payload = "#" + str(TERM) + '*'
+
+							for key, value in LOAD_DICT.items():
+								#format file commit : worker_id | cpuload | status
+								if key != 0:
+									payload += '&'
+								payload += '{}|{}|{}'.format(str(key), str(value), str(STATUS_DICT[key]))
+
+							payload += '\n'
+
+							replace_line(DATA_FILE, COMMIT_DICT[ID], payload)
 
 							#REPLICATES DATA TO OTHER NODE
 							"""for i in range(N_NODE):
@@ -328,14 +459,16 @@ class ListenerHandler(BaseHTTPRequestHandler):
 										#print("replication fail for node "+str(i))
 										#print ("Unexpected error:", sys.exc_info()[0])
 										print(e)"""
-
+							COMMIT_COUNTER[COMMIT_DICT[ID]+1] = 1
+							TOP_DICT[ID] += 1
 							for i in range(N_NODE):
 								if i != ID:
 									try:
 										_thread.start_new_thread(sendCPULoad, (NODE_DICT[i][IP], NODE_DICT[i][PORT]))
-										print("SEND SUCCEED TO NODE %s" % str(i))
+										#print("SEND SUCCEED TO NODE %s" % str(i))
 									except:
-										print("Error: unable to start thread")
+										pass
+										#print("Error: unable to start thread")
 						else:
 							print("Sorry the worker %s is not defined..." % (workerid))
 			
@@ -346,8 +479,28 @@ class ListenerHandler(BaseHTTPRequestHandler):
 
 def sendCPULoad(ip, port):
 	try:
-		r = requests.get(ip + ":" + port +"/data/"+str(ID)+"/"+str(TERM) + "/" + str(COMMIT_DICT[ID] + 1), params=LOAD_DICT, timeout=0.01)
+		payload = {}
+		for i in range(N_WORKER):
+			payload[i] = [LOAD_DICT[i], STATUS_DICT[i]]
+		r = requests.get(ip + ":" + port +"/data/"+str(ID)+"/"+str(TERM) + "/" + str(COMMIT_DICT[ID] + 1), params=payload, timeout=0.01)
 	except:
+		pass
+
+def sendCommit(ip, port, commitLine):
+	f = open(DATA_FILE, 'r')
+	i = 0
+	payload = ""
+	for line in f:
+		if i != commitLine-1:
+			i+=1
+		else:
+			payload = line
+
+
+	try:
+		r = requests.get(ip + ":" + port + "/commit/" +  payload + "/" + str(COMMIT_DICT[ID]) + "/" + str(ID), timeout=0.01)
+	except Exception as e:
+		#print(e)
 		pass
 
 def print_usage():
@@ -365,6 +518,8 @@ if __name__ == '__main__':
         TERM = 0
         COMMIT_DICT[ID] = 0
         init()
+
+
 
         # start timer here
         try:
