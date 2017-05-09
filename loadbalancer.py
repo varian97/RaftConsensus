@@ -105,9 +105,10 @@ def nodeTimer():
 	global DOWNVOTE
 	global VOTE_TERM
 	global HEARTBEAT
+	global IS_LEADER
 	while 1:
-		past = time.clock()
-		TIMEOUT = random.uniform(2.0, 4.0)
+		"""past = time.clock()
+		TIMEOUT = random.uniform(10.0, 20.0)
 		while not IS_LEADER and TIMEOUT > 0:
 			now = time.clock()
 			TIMEOUT -= now - past
@@ -134,7 +135,9 @@ def nodeTimer():
 			while IS_LEADER  and HEARTBEAT > 0:
 				now = time.clock()
 				HEARTBEAT -= now - past
-				past = now
+				past = now"""
+		if ID == 0:
+			IS_LEADER = True
 
 #class for http connection between node2node and node2worker
 class ListenerHandler(BaseHTTPRequestHandler):			
@@ -242,6 +245,7 @@ class ListenerHandler(BaseHTTPRequestHandler):
 							countCommit = countCommit + 1
 
 						if countCommit == leaderCommit - 1:
+							print("NODE FOLLOWER : MASUKIN KE COMMIT LOG")
 							# parsing the data from url into local load dict
 							parsed = urlparse.urlparse(self.path)
 							for i in range(N_WORKER):
@@ -250,6 +254,9 @@ class ListenerHandler(BaseHTTPRequestHandler):
 							#LOAD_DICT = json.loads(args[5].decode("utf-8"))
 							for key in LOAD_DICT:
 								STATUS_DICT[key] = ON
+
+							for key, value in LOAD_DICT :
+								print(key, value)
 
 							# copy data from temp dict into storage
 							commit_data = open(DATA_FILE, 'w')
@@ -260,13 +267,14 @@ class ListenerHandler(BaseHTTPRequestHandler):
 							# send commit to leader
 							try:
 								id_leader = int(args[2])
+								print("NODE FOLLOWER : SENDING POSITIVE BACK TO THE LEADER")
 								r = requests.get(NODE_DICT[id_leader][IP] + ":" + str(NODE_DICT[id_leader][PORT]) + "/positive/" + countCommit + "/" + str(ID), timeout=0.01)
-								print("send positive succeed")
 							except TypeError as e:
 								#print("Send positive response failed for node "+str(ID))
 								#print ("Unexpected error:", sys.exc_info()[0])
 								print(e)
 						elif countCommit < leaderCommit - 1:
+							print("NODE FOLLOWER : SENDING NEGATIVE BACK TO THE LEADER")
 							# send negative
 							id_leader = int(args[2])
 							try :
@@ -293,11 +301,14 @@ class ListenerHandler(BaseHTTPRequestHandler):
 								temp_data = line
 						r = requests.get(NODE_DICT[i][IP] + ":" + str(NODE_DICT[i][PORT]) +"/data/"+str(ID)+"/"+str(TERM) + "/" + str(int(commit)-1), params=temp_data, timeout=0.01)
 				elif n == "cpuload":
+					print(IS_LEADER)
 					# process the cpu load if the current node is a leader
 					if IS_LEADER:
 						# collect the data
 						cpuload = args[2]
 						workerid = args[3]
+
+						print("NODE LEADER : DAPET DARI DAEMON ID KE %s" % workerid)
 
 						if int(workerid) in WORKER_DICT:
 							print("worker with id %d is found" % (int(workerid)))
@@ -306,16 +317,24 @@ class ListenerHandler(BaseHTTPRequestHandler):
 							STATUS_DICT[workerid] = ON
 
 							#REPLICATES DATA TO OTHER NODE
-							for i in range(N_NODE):
+							"""for i in range(N_NODE):
 								if i != ID:
 									try:
 										cpuloadJSON = json.dumps(LOAD_DICT)
-										r = requests.get(NODE_DICT[i][IP] + ":" + str(NODE_DICT[i][PORT]) +"/data/"+str(ID)+"/"+str(TERM) + "/" + str(COMMIT_DICT[ID] + 1), params=LOAD_DICT, timeout=0.01)
 										print("==== cpu load has been sent to another node %s ====" % str(i))
+										r = requests.get(NODE_DICT[i][IP] + ":" + str(NODE_DICT[i][PORT]) +"/data/"+str(ID)+"/"+str(TERM) + "/" + str(COMMIT_DICT[ID] + 1), params=LOAD_DICT, timeout=0.01)
 									except NameError as e:
 										#print("replication fail for node "+str(i))
 										#print ("Unexpected error:", sys.exc_info()[0])
-										print(e)
+										print(e)"""
+
+							for i in range(N_NODE):
+								if i != ID:
+									try:
+										_thread.start_new_thread(sendCPULoad, (NODE_DICT[i][IP], NODE_DICT[i][PORT]))
+										print("SEND SUCCEED TO NODE %s" % str(i))
+									except:
+										print("Error: unable to start thread")
 						else:
 							print("Sorry the worker %s is not defined..." % (workerid))
 			
@@ -323,6 +342,12 @@ class ListenerHandler(BaseHTTPRequestHandler):
 			self.send_response(500)
 			self.end_headers()
 			print(ex)
+
+def sendCPULoad(ip, port):
+	try:
+		r = requests.get(ip + ":" + port +"/data/"+str(ID)+"/"+str(TERM) + "/" + str(COMMIT_DICT[ID] + 1), params=LOAD_DICT, timeout=0.01)
+	except:
+		pass
 
 def print_usage():
     print('Usage : %s [node_id]' % sys.argv[0])
