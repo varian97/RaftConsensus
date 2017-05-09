@@ -98,6 +98,7 @@ def daemonTimer():
 
 
 def nodeTimer():
+<<<<<<< HEAD
 	global TERM
 	global TIMEOUT
 	global IS_ELECTION
