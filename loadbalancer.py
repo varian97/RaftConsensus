@@ -139,7 +139,7 @@ def nodeTimer():
 			print ("LEADER")
 			for i in range (N_NODE):		
 				if i != ID:
-					sendCommit(NODE_DICT[i][IP], NODE_DICT[i][PORT], TOP_DICT[i]-1)
+					sendCommit(NODE_DICT[i][IP], NODE_DICT[i][PORT], TOP_DICT[i])
 					print ("send commit to node " + str(i))
 			HEARTBEAT = STD_HEARTBEAT
 			past = time.clock()
@@ -232,7 +232,7 @@ class ListenerHandler(BaseHTTPRequestHandler):
 							count = 0
 							f = open(DATA_FILE, "r")
 							for line in f:
-								if (line[0] != '#') and len(line) > 0:
+								if (line[0] != '!') and len(line) > 0:
 									lastcommit = line
 									count += 1
 
@@ -313,7 +313,7 @@ class ListenerHandler(BaseHTTPRequestHandler):
 
 
 							# copy data from temp dict into storage
-							payload = "#" + str(TERM) + '*'
+							payload = "!" + str(TERM) + '*'
 
 							for key, value in LOAD_DICT.items():
 								#format file commit : worker_id | cpuload | status
@@ -364,8 +364,8 @@ class ListenerHandler(BaseHTTPRequestHandler):
 									i+=1
 								else:
 									payload = line
-							if payload[0] == '#':
-								replace_line(DATA_FILE, int(args[3]), payload.split('#')[1])
+							if payload[0] == '!':
+								replace_line(DATA_FILE, int(args[3]), payload.split('!')[1])
 
 							COMMIT_DICT[ID] = int(args[2])
 							TOP_DICT[ID] = int(args[2]) + 1
@@ -381,9 +381,12 @@ class ListenerHandler(BaseHTTPRequestHandler):
 					countCommit = 0
 					f = open(DATA_FILE, "r")
 					for line in f:
-						if (line[0] != '#') and len(line) > 0:
+						if (line[0] != '!') and len(line) > 0:
 							countCommit = countCommit + 1
+
 					commitLine = int(args[3])
+					id_leader = int(args[4])
+
 					print(str(countCommit)+ "========="+ str(commitLine-1))
 					if countCommit == commitLine - 1:
 						i = 0
@@ -394,26 +397,25 @@ class ListenerHandler(BaseHTTPRequestHandler):
 							else:
 								payload = line
 						if len(payload) == 0:
-							replace_line(DATA_FILE, countCommit, args[2].replace('%27', '|') + '\n')
-						elif payload[0] == '#':
-							replace_line(DATA_FILE, countCommit, payload.split('#')[1])
+							replace_line(DATA_FILE, countCommit, args[2].replace('%7C', '|') + '\n')
+						elif payload[0] == '!':
+							replace_line(DATA_FILE, countCommit, payload.split('!')[1])
 						print("POSITIVE COMMIT")
 						r = requests.get(NODE_DICT[id_leader][IP] + ":" + str(NODE_DICT[id_leader][PORT]) + "/positivecommit/" + args[3] + "/" + str(ID), timeout=0.01)
 
 					elif countCommit < commitLine - 1:
-						id_leader = int(args[4])
 						try :
 							r = requests.get(NODE_DICT[id_leader][IP] + ":" + str(NODE_DICT[id_leader][PORT]) + "/negativecommit/" + args[3] + "/" + str(ID), timeout=0.01)
 						except TypeError as e:
-							print(e)
+							pass
 
 				elif n == "positivecommit":
-					print ("Leader get positive commit")
+					print ("Leader get positive commit from id = %s" % args[3])
 					if COMMIT_DICT[int(args[3])] == int(args[2]) - 1:
 						COMMIT_DICT[int(args[3])] = int(args[2])
 						TOP_DICT[int(args[3])] = int(args[2]) + 1
 						COMMIT_COUNTER[int(args[3])] += 1
-						if COMMIT_COUNTER[int(args[3])] > N_NODE/2 and COMMIT_DICT[ID] == int(args[2] - 1):
+						if COMMIT_COUNTER[int(args[3])] > N_NODE/2 and COMMIT_DICT[ID] == int(args[2]) - 1:
 							COMMIT_DICT[ID] += 1
 
 				elif n == "negativecommit":
@@ -436,7 +438,7 @@ class ListenerHandler(BaseHTTPRequestHandler):
 							LOAD_DICT[int(workerid)] = cpuload
 							STATUS_DICT[int(workerid)] = ON
 
-							payload = "#" + str(TERM) + '*'
+							"""payload = "!" + str(TERM) + '*'
 
 							for key, value in LOAD_DICT.items():
 								#format file commit : worker_id | cpuload | status
@@ -446,29 +448,16 @@ class ListenerHandler(BaseHTTPRequestHandler):
 
 							payload += '\n'
 
-							replace_line(DATA_FILE, COMMIT_DICT[ID], payload)
+							replace_line(DATA_FILE, COMMIT_DICT[ID], payload)"""
 
-							#REPLICATES DATA TO OTHER NODE
-							"""for i in range(N_NODE):
-								if i != ID:
-									try:
-										cpuloadJSON = json.dumps(LOAD_DICT)
-										print("==== cpu load has been sent to another node %s ====" % str(i))
-										r = requests.get(NODE_DICT[i][IP] + ":" + str(NODE_DICT[i][PORT]) +"/data/"+str(ID)+"/"+str(TERM) + "/" + str(COMMIT_DICT[ID] + 1), params=LOAD_DICT, timeout=0.01)
-									except NameError as e:
-										#print("replication fail for node "+str(i))
-										#print ("Unexpected error:", sys.exc_info()[0])
-										print(e)"""
-							COMMIT_COUNTER[COMMIT_DICT[ID]+1] = 1
+							COMMIT_COUNTER[TOP_DICT[ID]] = 1
 							TOP_DICT[ID] += 1
 							for i in range(N_NODE):
 								if i != ID:
 									try:
 										_thread.start_new_thread(sendCPULoad, (NODE_DICT[i][IP], NODE_DICT[i][PORT]))
-										#print("SEND SUCCEED TO NODE %s" % str(i))
 									except:
 										pass
-										#print("Error: unable to start thread")
 						else:
 							print("Sorry the worker %s is not defined..." % (workerid))
 			
@@ -496,10 +485,9 @@ def sendCommit(ip, port, commitLine):
 		else:
 			payload = line
 
-
 	try:
-		r = requests.get(ip + ":" + port + "/commit/" +  payload + "/" + str(COMMIT_DICT[ID]) + "/" + str(ID), timeout=0.01)
-	except Exception as e:
+		r = requests.get(ip + ":" + port + "/commit/" +  payload + "/" + str(commitLine) + "/" + str(ID), timeout=0.01)
+	except :
 		#print(e)
 		pass
 
