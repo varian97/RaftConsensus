@@ -27,6 +27,7 @@ ID = None
 # address dict (ID->[IP,PORT])
 WORKER_DICT = {}
 NODE_DICT = {}
+WORKER_ADDR = {}
 
 # RAFT stored variables
 DATA_DICT = {}
@@ -336,14 +337,23 @@ class ListenerHandler(BaseHTTPRequestHandler):
 					TIMEOUT = random.uniform(TIMEOUT_RANGE, 2*TIMEOUT_RANGE)
 					if not IS_LEADER:
 						print(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" + args[4].split('?')[0])
-						if(int(args[3]) == META_DATA[DATA_TERM] and int(args[4].split('?')[0]) == META_DATA[DATA_INDEX]):
-							commitData();
+						if(int(args[3]) >= META_DATA[DATA_TERM] and int(args[4].split('?')[0]) >= META_DATA[DATA_INDEX]):
+							
+							META_DATA[DATA_INDEX] = int(args[4].split('?')[0])
+							META_DATA[DATA_TERM] = int(args[3])
+							parsed = urlparse.urlparse(self.path)
+							for i in range(N_WORKER):
+								DATA_DICT[i][LOAD] = float(urlparse.parse_qs(parsed.query)[str(i)][0])
+								DATA_DICT[i][STATUS] = int(urlparse.parse_qs(parsed.query)[str(i)][1])
+							commitData()
+
 							try:
 								id_leader = int(args[2])
-								print("NODE FOLLOWER : SENDING POSITIVE COMMIT")
-								r = requests.get("{}:{}/positivecommit/{}/{}/{}".format(NODE_DICT[id_leader][IP], str(NODE_DICT[id_leader][PORT]), args[3], args[4].split('?')[0], str(ID), timeout=0.01))
+								print("NODE FOLLOWER : SENDING POSITIVE BACK TO THE LEADER")
+								r = requests.get("{}:{}/positive/{}/{}/{}".format(NODE_DICT[id_leader][IP], str(NODE_DICT[id_leader][PORT]), args[3], args[4].split('?')[0], str(ID), timeout=0.01))
 							except :
 								pass
+							
 						else:
 							print("NODE FOLLOWER : SENDING NEGATIVE COMMIT")
 							id_leader = int(args[2])
