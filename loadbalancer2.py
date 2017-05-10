@@ -89,6 +89,12 @@ def init():
     TERM = getLastTerm()
     INDEX = getLastCommit()
 
+    f = open("WorkerList.txt", "r")
+    i = 0
+    for line in f:
+    	WORKER_ADDR[i] = line
+    	i+=1
+
 
 def daemonTimer():
 	global DATA_DICT
@@ -187,7 +193,7 @@ def getMinIdx():
 	dataString = f[0].split('*')[2].split('\n')[0]
 	for item in dataString.split('&'):
 		values = item.split('|')
-		DATA_DICT[int(values[0])] = [float(values[1]),int(values[1])]
+		DATA_DICT[int(values[0])] = [float(values[1]),int(values[2])]
 	idx = -1
 	for i in range(N_WORKER):
 		if idx < 0:
@@ -196,7 +202,7 @@ def getMinIdx():
 		else:
 			if DATA_DICT[i][STATUS] == ON and DATA_DICT[i][LOAD] < DATA_DICT[idx][LOAD]:
 				idx = i
-	return i
+	return idx
 
 #class for http connection between node2node and node2worker
 class ListenerHandler(BaseHTTPRequestHandler):			
@@ -219,13 +225,22 @@ class ListenerHandler(BaseHTTPRequestHandler):
 			args = self.path.split('/')
 			if len(args) < 2:
 				raise Exception()
+
 			# handle each request based on its type
 			if len(args) == 2:
+
 				# send request from client to worker
 				n = int(args[1])
 				if getMinIdx() >= 0:
-					r = requests.get(WORKER_DICT[getMinIdx()][IP] + ":" + str(WORKER_DICT[minLoad][PORT])+"/"+args[2], timeout = 0.01)
+					r = requests.get(WORKER_ADDR[getMinIdx()].split('\n')[0] + "/" + args[1], timeout = 0.5)
+					print(r.url)
 					self.wfile.write(str(int(r.text)).encode('utf-8'))
+					'''print("INI CETAK URL ")
+					url = WORKER_ADDR[getMinIdx()] + "/" + args[1]
+					print(url)
+					self.send_response(301)
+					self.send_header('Location', url)
+					self.end_headers()'''
 				else:
 					self.wfile.write(str("No active worker").encode('utf-8'))
 				#print the result
@@ -337,7 +352,7 @@ class ListenerHandler(BaseHTTPRequestHandler):
 					TIMEOUT = random.uniform(TIMEOUT_RANGE, 2*TIMEOUT_RANGE)
 					if not IS_LEADER:
 						print(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" + args[4].split('?')[0])
-						if(int(args[3]) >= META_DATA[DATA_TERM] and int(args[4].split('?')[0]) >= META_DATA[DATA_INDEX]):
+						if(int(args[4].split('?')[0]) >= META_DATA[DATA_INDEX]):
 							
 							META_DATA[DATA_INDEX] = int(args[4].split('?')[0])
 							META_DATA[DATA_TERM] = int(args[3])

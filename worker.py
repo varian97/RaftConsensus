@@ -1,8 +1,9 @@
 #!/usr/bin/env python
 from http.server import HTTPServer
 from http.server import BaseHTTPRequestHandler
+import sys
 
-PORT = 13337
+#PORT = 13337
 
 
 class WorkerHandler(BaseHTTPRequestHandler):
@@ -24,6 +25,7 @@ class WorkerHandler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         try:
+            print(self.path)
             args = self.path.split('/')
             if len(args) != 2:
                 raise Exception()
@@ -36,6 +38,15 @@ class WorkerHandler(BaseHTTPRequestHandler):
             self.end_headers()
             print(ex)
 
+ID = int(sys.argv[1])
+i = 0
+PORT = None
+
+f = open("WorkerList.txt", "r")
+for line in f:
+    if i == ID:
+        PORT = int(line.split(":")[2])
+    i+=1
 
 server = HTTPServer(("", PORT), WorkerHandler)
 server.serve_forever()
