@@ -21,8 +21,8 @@ TIMEOUT_RANGE = 5
 # const from file
 N_NODE = 0
 N_WORKER = 0
-DATA_FILE = None
-ID = None
+DATA_FILE = ""
+ID = 0
 
 # address dict (ID->[IP,PORT])
 WORKER_DICT = {}
@@ -32,7 +32,7 @@ WORKER_ADDR = {}
 # RAFT stored variables
 DATA_DICT = {}
 META_DATA = {}
-TERM = None
+TERM = 0
 INDEX = None
 
 # RAFT runtime variables
@@ -49,6 +49,7 @@ VOTE_TERM = 0
 HEARTBEAT = 0
 DAEMON_TIMEOUT = {}
 COMMIT_COUNTER = {}
+
 
 def init():
     global N_NODE
@@ -97,95 +98,99 @@ def init():
 
 
 def daemonTimer():
-	global DATA_DICT
-	global DAEMON_TIMEOUT
-	past = time.clock()
-	while IS_LEADER:
-		now = time.clock()
-		for i in range(N_WORKER):
-			if DAEMON_TIMEOUT[i] > 0:
-				DAEMON_TIMEOUT[i] -= now - past
-			if DAEMON_TIMEOUT[i] <= 0:
-				DATA_DICT[i][STATUS] = OFF
-		past = now
+    global DATA_DICT
+    global DAEMON_TIMEOUT
+    past = time.clock()
+    while IS_LEADER:
+        now = time.clock()
+        for i in range(N_WORKER):
+            if DAEMON_TIMEOUT[i] > 0:
+                DAEMON_TIMEOUT[i] -= now - past
+            if DAEMON_TIMEOUT[i] <= 0:
+                DATA_DICT[i][STATUS] = OFF
+        past = now
 
 
 def nodeTimer():
-	global TERM
-	global TIMEOUT
-	global IS_ELECTION
-	global UPVOTE
-	global DOWNVOTE
-	global VOTE_TERM
-	global IS_LEADER
+    global TERM
+    global TIMEOUT
+    global IS_ELECTION
+    global UPVOTE
+    global DOWNVOTE
+    global VOTE_TERM
+    global IS_LEADER
 
-	
+    while 1:
+        # if ID == 0:
+        #	IS_LEADER = True
+        past = time.clock()
+        TIMEOUT = random.uniform(TIMEOUT_RANGE, 2 * TIMEOUT_RANGE)
+        while not IS_LEADER and TIMEOUT > 0:
+            now = time.clock()
+            TIMEOUT -= now - past
+            past = now
+        if not IS_LEADER:
+            UPVOTE = 1
+            DOWNVOTE = 0
+            IS_ELECTION = True
+            TERM += 1
+            VOTE_TERM = TERM
+            for i in range(N_NODE):
+                if i != ID:
+                    try:
+                        # print ("send vote request to node " + str(i) + " for term " + str(TERM))
+                        r = requests.get("{node_ip}:{node_port:d}/voteRequest/{node_id:d}/{term:d}/{commit}".format(
+                            node_ip=NODE_DICT[i][IP], node_port=NODE_DICT[i][PORT], node_id=ID, term=TERM,
+                            commit=getLastCommit()), timeout=0.01)
+                    except:
+                        pass
+        while IS_LEADER:
+            print("# BROADCAST")
+            for i in range(N_NODE):
+                if i != ID:
+                    sendCommit(i, 0)
+                    print("send commit to node {node_id}".format(node_id=i))
+            HEARTBEAT = STD_HEARTBEAT
+            past = time.clock()
+            while IS_LEADER and HEARTBEAT > 0:
+                now = time.clock()
+                HEARTBEAT -= now - past
+                past = now
+            pass
 
-	while 1:
-		#if ID == 0:
-		#	IS_LEADER = True
-		past = time.clock()
-		TIMEOUT = random.uniform(TIMEOUT_RANGE, 2*TIMEOUT_RANGE)
-		while not IS_LEADER and TIMEOUT > 0:
-			now = time.clock()
-			TIMEOUT -= now - past
-			past = now	
-		if not IS_LEADER:
-			UPVOTE = 1
-			DOWNVOTE = 0
-			IS_ELECTION = True
-			TERM += 1
-			VOTE_TERM = TERM
-			for i in range (N_NODE):
-				if i != ID:
-					try:
-						#print ("send vote request to node " + str(i) + " for term " + str(TERM))
-						r = requests.get(NODE_DICT[i][IP] + ":" + str(NODE_DICT[i][PORT])+"/voteRequest/"+str(ID)+"/"+str(TERM)+"/"+str(getLastCommit()), timeout = 0.01)
-					except:
-						pass
-		while IS_LEADER:
-			print ("BROADCAST")
-			for i in range (N_NODE):		
-				if i != ID:
-					sendCommit(i, 0)
-					print ("send commit to node " + str(i))
-			HEARTBEAT = STD_HEARTBEAT
-			past = time.clock()
-			while IS_LEADER  and HEARTBEAT > 0:
-				now = time.clock()
-				HEARTBEAT -= now - past
-				past = now
-			pass
-		
 
 def getLastTerm():
-	f = open(DATA_FILE, 'r').readlines()
-	return int(f[0].split('*')[0])
+    f = open(DATA_FILE, 'r').readlines()
+    return int(f[0].split('*')[0])
+
 
 def getLastCommit():
-	f = open(DATA_FILE, 'r').readlines()
-	return int(f[0].split('*')[1])
+    f = open(DATA_FILE, 'r').readlines()
+    return int(f[0].split('*')[1])
+
 
 def readData():
-	global META_DATA
-	global DATA_DICT
-	f = open(DATA_FILE, 'r').readlines()
-	dataString = f[0].split('*')[2].split('\n')[0]
-	META_DATA[DATA_TERM] = getLastTerm()
-	META_DATA[DATA_INDEX] = getLastCommit()
-	for item in dataString.split('&'):
-		values = item.split('|')
-		DATA_DICT[int(values[0])] = [float(values[1]),int(values[2])]
+    global META_DATA
+    global DATA_DICT
+    f = open(DATA_FILE, 'r').readlines()
+    dataString = f[0].split('*')[2].split('\n')[0]
+    META_DATA[DATA_TERM] = getLastTerm()
+    META_DATA[DATA_INDEX] = getLastCommit()
+    for item in dataString.split('&'):
+        values = item.split('|')
+        DATA_DICT[int(values[0])] = [float(values[1]), int(values[2])]
 
-def commitData():	
-	text = str(META_DATA[DATA_TERM]) + "*" + str(META_DATA[DATA_INDEX]) + "*"
-	for i in range(N_WORKER):
-		if (i != 0):
-			text += '&'
-		text += str(i) + "|" + str(DATA_DICT[i][LOAD]) + "|" + str(DATA_DICT[i][STATUS])
-	f = open(DATA_FILE, 'w')
-	f.write(text)
-	f.close
+
+def commitData():
+    text = str(META_DATA[DATA_TERM]) + "*" + str(META_DATA[DATA_INDEX]) + "*"
+    for i in range(N_WORKER):
+        if (i != 0):
+            text += '&'
+        text += str(i) + "|" + str(DATA_DICT[i][LOAD]) + "|" + str(DATA_DICT[i][STATUS])
+    f = open(DATA_FILE, 'w')
+    f.write(text)
+    f.close()
+
 
 def getMinIdx():
 	DATA_DICT = {}
@@ -415,34 +420,43 @@ class ListenerHandler(BaseHTTPRequestHandler):
 			print(ex)
 
 def sendCPULoad(i, j):
-	try:
-		payload = {}
-		for j in range(N_WORKER):
-			payload[j] = DATA_DICT[j]
-		r = requests.get(NODE_DICT[i][IP] + ":" + NODE_DICT[i][PORT] +"/data/"+str(ID)+"/"+str(META_DATA[DATA_TERM]) + "/" + str(META_DATA[DATA_INDEX]), params=payload, timeout=0.01)
-	except Exception as e:
-		#print(e)
-		pass
+    try:
+        payload = {}
+        for j in range(N_WORKER):
+            payload[j] = DATA_DICT[j]
+
+        r = requests.get(
+            "{node_ip}:{node_port}/data/{node_id}/{term}/{index}".format(node_ip=NODE_DICT[i][IP],
+                                                                         node_port=NODE_DICT[i][PORT], node_id=ID,
+                                                                          term=META_DATA[DATA_TERM], index=META_DATA[DATA_INDEX]),
+            params=payload, timeout=0.01)
+    except Exception as e:
+        pass
+
 
 def sendCommit(i, j):
-	try:
-		f = open(DATA_FILE, 'r').readlines()
-		META_DATA[DATA_TERM] = int(f[0].split('*')[0])
-		META_DATA[DATA_INDEX] = int(f[0].split('*')[1])
-		payload = {}
-		dataLines = f[0].split('*')[2].split('&')
-		for values in dataLines:
-			payload[int(values.split('|')[0])] = [float(values.split('|')[1]),int(values.split('|')[2])]
-		for j in range(N_WORKER):
-			payload[j] = DATA_DICT[j]
-		r = requests.get(NODE_DICT[i][IP] + ":" + NODE_DICT[i][PORT] +"/commit/"+str(ID)+"/"+str(META_DATA[DATA_TERM]) + "/" + str(META_DATA[DATA_INDEX]), params=payload, timeout=0.01)
-	except Exception as e:
-		#print(e)
-		pass
+    try:
+        f = open(DATA_FILE, 'r').readlines()
+        META_DATA[DATA_TERM] = int(f[0].split('*')[0])
+        META_DATA[DATA_INDEX] = int(f[0].split('*')[1])
+        payload = {}
+        dataLines = f[0].split('*')[2].split('&')
+        for values in dataLines:
+            payload[int(values.split('|')[0])] = [float(values.split('|')[1]), int(values.split('|')[2])]
+        for j in range(N_WORKER):
+            payload[j] = DATA_DICT[j]
+
+        r = requests.get(
+            "{node_ip}:{node_port}/commit/{node_id}/{term}/{index}".format(node_ip=NODE_DICT[i][IP], node_port=NODE_DICT[i][PORT],
+                                                                           node_id=ID,
+                                                                                   term=META_DATA[DATA_TERM], index=META_DATA[DATA_INDEX]),params=payload,
+            timeout=0.01)
+    except Exception as e:
+        pass
 
 
 def print_usage():
-    print('Usage : %s [node_id]' % sys.argv[0])
+    print('Usage : {command} [node_id]'.format(command=sys.argv[0]))
     print('Please use ID (0 <= ID < number of node)')
     sys.exit(-1)
 
@@ -451,17 +465,19 @@ if __name__ == '__main__':
     if len(sys.argv) != 2:
         print_usage()
     else:
-        # initialize ID, TERM, COMMIT_DICTIONARY
-        ID = int(sys.argv[1])
-        init()
-
-
-
-        # start timer here
         try:
-            _thread.start_new_thread(nodeTimer, ())
-        except:
-            print("Error: unable to start thread")
-        # start server here
-        server = HTTPServer(("", int(NODE_DICT[ID][PORT])), ListenerHandler)
-        server.serve_forever()
+            # initialize ID, TERM, COMMIT_DICTIONARY
+            ID = int(sys.argv[1])
+            init()
+
+            # start timer here
+            try:
+                _thread.start_new_thread(nodeTimer, ())
+            except:
+                print("Error: unable to start thread")
+            # start server here
+            server = HTTPServer(("", int(NODE_DICT[ID][PORT])), ListenerHandler)
+            server.serve_forever()
+        except KeyboardInterrupt:
+            print("# Load Balancer Shutdown")
+            sys.exit(0)
